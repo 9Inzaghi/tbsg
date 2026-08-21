@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>semantic-parallel-data-query 技术架构与能力说明</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #0b0f1a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  code, .mono {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  /* Title */
+  .main-title {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .main-title h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+  .main-title p {
+    color: #64748b;
+    font-size: 0.95rem;
+  }
+  .main-title .ver {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 0.72rem;
+    padding: 3px 12px;
+    border-radius: 14px;
+    background: rgba(139, 92, 246, 0.12);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    color: #c4b5fd;
+  }
+
+  /* Flow steps legend */
+  .flow-steps {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 36px;
+  }
+  .flow-steps-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #94a3b8;
+    margin-bottom: 14px;
+    letter-spacing: 0.5px;
+  }
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.08);
+  }
+  .flow-step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    color: #fff;
+  }
+  .flow-step:nth-child(1) .flow-step-num { background: #10b981; }
+  .flow-step:nth-child(2) .flow-step-num { background: #3b82f6; }
+  .flow-step:nth-child(3) .flow-step-num { background: #3b82f6; }
+  .flow-step:nth-child(4) .flow-step-num { background: #8b5cf6; }
+  .flow-step:nth-child(5) .flow-step-num { background: #8b5cf6; }
+  .flow-step:nth-child(6) .flow-step-num { background: #f59e0b; }
+  .flow-step:nth-child(7) .flow-step-num { background: #f59e0b; }
+  .flow-step:nth-child(8) .flow-step-num { background: #06b6d4; }
+  .flow-step-text {
+    font-size: 0.78rem;
+    color: #cbd5e1;
+    line-height: 1.4;
+  }
+
+  /* Layer wrapper */
+  .layer {
+    position: relative;
+    margin-bottom: 20px;
+    padding: 24px;
+    border-radius: 16px;
+    border: 1px solid;
+  }
+  .layer-label {
+    position: absolute;
+    top: -13px;
+    left: 24px;
+    padding: 2px 16px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+
+  /* Layer 0 - Upstream (green) */
+  .layer-agent {
+    background: rgba(16, 185, 129, 0.06);
+    border-color: rgba(16, 185, 129, 0.25);
+  }
+  .layer-agent .layer-label {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff;
+  }
+  /* Layer 1 - Dispatch (blue) */
+  .layer-1 {
+    background: rgba(59, 130, 246, 0.06);
+    border-color: rgba(59, 130, 246, 0.25);
+  }
+  .layer-1 .layer-label {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: #fff;
+  }
+  /* Layer 2 - Mechanisms (purple) */
+  .layer-2 {
+    background: rgba(139, 92, 246, 0.06);
+    border-color: rgba(139, 92, 246, 0.25);
+  }
+  .layer-2 .layer-label {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    color: #fff;
+  }
+  /* Layer 3 - Tools (amber) */
+  .layer-3 {
+    background: rgba(245, 158, 11, 0.06);
+    border-color: rgba(245, 158, 11, 0.25);
+  }
+  .layer-3 .layer-label {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+  }
+  /* Layer 4 - Platform (cyan) */
+  .layer-4 {
+    background: rgba(6, 182, 212, 0.06);
+    border-color: rgba(6, 182, 212, 0.25);
+  }
+  .layer-4 .layer-label {
+    background: linear-gradient(135deg, #06b6d4, #0891b2);
+    color: #fff;
+  }
+
+  /* Layer 0 row */
+  .agent-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .agent-card {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.1));
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 14px;
+    padding: 18px 36px;
+    text-align: center;
+    min-width: 320px;
+  }
+  .agent-card h2 {
+    font-size: 1.3rem;
+    color: #6ee7b7;
+    margin-bottom: 4px;
+  }
+  .agent-card p {
+    color: #94a3b8;
+    font-size: 0.85rem;
+  }
+  .agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.82rem;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #6ee7b7;
+    max-width: 300px;
+    text-align: center;
+    line-height: 1.4;
+  }
+  .flow-arrow-h {
+    color: #475569;
+    font-size: 1.2rem;
+  }
+
+  /* Inter-layer arrow */
+  .layer-arrow {
+    text-align: center;
+    margin: 10px 0;
+    color: #475569;
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+  .layer-arrow .arrow-text {
+    font-size: 0.7rem;
+    color: #64748b;
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* Layer 1 - Input contract router card */
+  .router-skill {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 14px;
+  }
+  .router-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .router-icon {
+    width: 48px;
+    height: 48px;
+    background: rgba(59, 130, 246, 0.15);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+  }
+  .router-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #93c5fd;
+  }
+  .router-subtitle {
+    font-size: 0.78rem;
+    color: #64748b;
+  }
+  .router-caps {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .router-cap {
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    border-radius: 10px;
+    padding: 10px 14px;
+    flex: 1;
+    min-width: 240px;
+  }
+  .router-cap h4 {
+    font-size: 0.82rem;
+    color: #93c5fd;
+    margin-bottom: 4px;
+  }
+  .router-cap p {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+  .router-cap code {
+    color: #bfdbfe;
+    font-size: 0.7rem;
+  }
+
+  /* Path cards (Layer 1 lower) */
+  .path-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .path-card {
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .path-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.12);
+  }
+  .path-a { background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.04)); border-color: rgba(16, 185, 129, 0.25); }
+  .path-b { background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.04)); border-color: rgba(245, 158, 11, 0.25); }
+  .path-c { background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.04)); border-color: rgba(139, 92, 246, 0.25); }
+  .path-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .path-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .path-a .path-icon { background: rgba(16, 185, 129, 0.15); }
+  .path-b .path-icon { background: rgba(245, 158, 11, 0.15); }
+  .path-c .path-icon { background: rgba(139, 92, 246, 0.15); }
+  .path-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+  }
+  .path-a .path-title { color: #6ee7b7; }
+  .path-b .path-title { color: #fcd34d; }
+  .path-c .path-title { color: #c4b5fd; }
+  .path-cond {
+    font-size: 0.68rem;
+    color: #64748b;
+    margin-bottom: 8px;
+  }
+  .path-cond code { font-size: 0.66rem; color: #94a3b8; }
+  .path-flow {
+    font-size: 0.74rem;
+    color: #cbd5e1;
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .path-note {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .path-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .path-tag {
+    font-size: 0.66rem;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid;
+  }
+  .path-a .path-tag { background: rgba(16, 185, 129, 0.1); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.2); }
+  .path-b .path-tag { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.2); }
+  .path-c .path-tag { background: rgba(139, 92, 246, 0.1); color: #a78bfa; border-color: rgba(139, 92, 246, 0.2); }
+
+  /* Layer 2 - mechanism cards */
+  .biz-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .biz-card {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(168, 85, 247, 0.06));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .biz-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.12);
+  }
+  .biz-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .biz-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .biz-card:nth-child(1) .biz-icon { background: rgba(59, 130, 246, 0.15); }
+  .biz-card:nth-child(2) .biz-icon { background: rgba(236, 72, 153, 0.15); }
+  .biz-card:nth-child(3) .biz-icon { background: rgba(34, 197, 94, 0.15); }
+  .biz-card:nth-child(4) .biz-icon { background: rgba(239, 68, 68, 0.15); }
+  .biz-card:nth-child(5) .biz-icon { background: rgba(6, 182, 212, 0.15); }
+  .biz-card:nth-child(6) .biz-icon { background: rgba(245, 158, 11, 0.15); }
+  .biz-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #c4b5fd;
+  }
+  .biz-step {
+    font-size: 0.66rem;
+    color: #64748b;
+    display: block;
+  }
+  .biz-desc {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    line-height: 1.55;
+    margin-bottom: 8px;
+  }
+  .biz-desc code { font-size: 0.7rem; color: #bfdbfe; }
+  .biz-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .biz-tag {
+    font-size: 0.66rem;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(139, 92, 246, 0.1);
+    color: #a78bfa;
+    border: 1px solid rgba(139, 92, 246, 0.15);
+  }
+
+  /* Annotation pills */
+  .shared-role-annotation {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(139, 92, 246, 0.15);
+  }
+  .role-pill {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px dashed rgba(139, 92, 246, 0.2);
+  }
+  .role-pill h5 {
+    font-size: 0.74rem;
+    color: #c4b5fd;
+    margin-bottom: 3px;
+  }
+  .role-pill p {
+    font-size: 0.7rem;
+    color: #64748b;
+    line-height: 1.4;
+  }
+  .role-pill.warn {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.25);
+  }
+  .role-pill.warn h5 { color: #fbbf24; }
+
+  /* Layer 3 - CLI card + tool grid */
+  .cli-card {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(251, 191, 36, 0.05));
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+  }
+  .cli-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .cli-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    background: rgba(245, 158, 11, 0.15);
+    flex-shrink: 0;
+  }
+  .cli-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #fcd34d;
+  }
+  .cli-subtitle {
+    font-size: 0.74rem;
+    color: #64748b;
+  }
+  .cli-code {
+    display: block;
+    background: rgba(2, 6, 23, 0.7);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    color: #fde68a;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: nowrap;
+    margin-bottom: 8px;
+  }
+  .cli-notes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .cli-note {
+    font-size: 0.68rem;
+    padding: 2px 9px;
+    border-radius: 12px;
+    background: rgba(245, 158, 11, 0.1);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.15);
+  }
+
+  .tool-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .tool-card {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(251, 191, 36, 0.04));
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 12px;
+    padding: 14px;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .tool-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.12);
+  }
+  .tool-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .tool-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    background: rgba(245, 158, 11, 0.15);
+    flex-shrink: 0;
+  }
+  .tool-name {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #fcd34d;
+    word-break: break-all;
+    line-height: 1.3;
+  }
+  .tool-role {
+    font-size: 0.72rem;
+    color: #cbd5e1;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .tool-params {
+    font-size: 0.66rem;
+    color: #64748b;
+    line-height: 1.5;
+  }
+  .tool-params code { color: #94a3b8; font-size: 0.64rem; }
+  .tool-badge {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 0.62rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+  }
+
+  /* Layer 4 - platform */
+  .shared-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .shared-card {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(34, 211, 238, 0.05));
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .shared-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .shared-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    background: rgba(6, 182, 212, 0.15);
+    flex-shrink: 0;
+  }
+  .shared-title {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #67e8f9;
+  }
+  .shared-subtitle {
+    font-size: 0.74rem;
+    color: #64748b;
+  }
+  .shared-desc {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  .shared-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .shared-feature {
+    font-size: 0.68rem;
+    padding: 2px 9px;
+    border-radius: 12px;
+    background: rgba(6, 182, 212, 0.1);
+    color: #67e8f9;
+    border: 1px solid rgba(6, 182, 212, 0.18);
+  }
+
+  /* Output contract section */
+  .section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #94a3b8;
+    letter-spacing: 0.5px;
+    margin: 36px 0 14px;
+  }
+  .contract-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .contract-card {
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid;
+  }
+  .contract-json {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.04));
+    border-color: rgba(139, 92, 246, 0.25);
+  }
+  .contract-simple {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.04));
+    border-color: rgba(16, 185, 129, 0.25);
+  }
+  .contract-notify {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.04));
+    border-color: rgba(245, 158, 11, 0.25);
+  }
+  .contract-card h3 {
+    font-size: 0.88rem;
+    margin-bottom: 4px;
+  }
+  .contract-json h3 { color: #c4b5fd; }
+  .contract-simple h3 { color: #6ee7b7; }
+  .contract-notify h3 { color: #fcd34d; }
+  .contract-sub {
+    font-size: 0.68rem;
+    color: #64748b;
+    margin-bottom: 10px;
+  }
+  .contract-card ul {
+    list-style: none;
+  }
+  .contract-card li {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    line-height: 1.5;
+    padding: 4px 0 4px 16px;
+    position: relative;
+  }
+  .contract-card li::before {
+    content: '›';
+    position: absolute;
+    left: 4px;
+    color: #475569;
+  }
+  .contract-card li code {
+    font-size: 0.7rem;
+    color: #cbd5e1;
+  }
+
+  /* Error table */
+  .err-panel {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-radius: 14px;
+    padding: 20px 24px;
+  }
+  .err-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+  }
+  .err-table th {
+    text-align: left;
+    color: #94a3b8;
+    font-weight: 600;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  }
+  .err-table td {
+    padding: 7px 10px;
+    color: #cbd5e1;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    line-height: 1.4;
+  }
+  .err-table tr:last-child td { border-bottom: none; }
+  .err-table code { color: #fca5a5; font-size: 0.68rem; }
+  .retry-yes {
+    display: inline-block;
+    font-size: 0.64rem;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.12);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+  }
+  .retry-no {
+    display: inline-block;
+    font-size: 0.64rem;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+  }
+
+  /* Legend */
+  .legend {
+    margin-top: 32px;
+    padding: 16px 20px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .legend-title {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    font-weight: 600;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .legend-dot.l0 { background: #10b981; }
+  .legend-dot.l1 { background: #3b82f6; }
+  .legend-dot.l2 { background: #8b5cf6; }
+  .legend-dot.l3 { background: #f59e0b; }
+  .legend-dot.l4 { background: #06b6d4; }
+
+  @media (max-width: 1100px) {
+    .flow-grid { grid-template-columns: repeat(2, 1fr); }
+    .path-grid { grid-template-columns: 1fr; }
+    .tool-grid { grid-template-columns: repeat(2, 1fr); }
+    .contract-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 900px) {
+    .biz-grid { grid-template-columns: repeat(2, 1fr); }
+    .shared-role-annotation { flex-direction: column; }
+  }
+  @media (max-width: 600px) {
+    .biz-grid { grid-template-columns: 1fr; }
+    .flow-grid { grid-template-columns: 1fr; }
+    .tool-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="main-title">
+    <h1>semantic-parallel-data-query · 快速并行语义取数</h1>
+    <p>直执行模式语义取数 Skill · 上游程序化调用 · 三条执行路径 · 六大核心机制 · 五个平台工具</p>
+    <span class="ver">SKILL v1.5.0 · semantics-public · aone-kit CLI</span>
+  </div>
+
+  <!-- 8-Step Flow -->
+  <div class="flow-steps">
+    <div class="flow-steps-title">结构化模式完整调用链路（8 步）· 简单模式见 LAYER 1 路径 A / B</div>
+    <div class="flow-grid">
+      <div class="flow-step">
+        <div class="flow-step-num">1</div>
+        <div class="flow-step-text">上游 Skill 传入结构化配置：<code>consumeDatasetId</code> + <code>queries[]</code></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">2</div>
+        <div class="flow-step-text"><strong>Step 1</strong>：<code>create-trace</code> 创建链路追踪，获取全局 <code>traceId</code></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">3</div>
+        <div class="flow-step-text"><strong>Step 2.5</strong>：同条件查询合并（8 字段精确匹配，metrics 拼接去重）</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">4</div>
+        <div class="flow-step-text"><strong>Step 3</strong>：data 查询分批并行取数（batch 并行 + 失败重试 + 熔断）</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">5</div>
+        <div class="flow-step-text"><strong>Step 3M</strong>：metadata 查询全并行执行（select / query / explore，不重试不熔断）</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">6</div>
+        <div class="flow-step-text"><strong>Step 4</strong>：收集全部结果，拆分合并查询并按 queryId 归位指标列</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">7</div>
+        <div class="flow-step-text"><strong>Step 5</strong>：组装结构化 JSON（traceId / 计数 / results[]）返回上游</div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-step-num">8</div>
+        <div class="flow-step-text"><strong>Step 6</strong>：失败时发送钉钉告警（可选，<code>notifyOnError</code> 默认开启）</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 0: Upstream callers -->
+  <div class="layer layer-agent">
+    <div class="layer-label">LAYER 0 · 上游调用方层</div>
+    <div class="agent-row">
+      <div class="agent-badge">🧩 上游 Skill（med-shop-analysis / fulfillment-analysis / universal-data-query 等）</div>
+      <div class="flow-arrow-h">→</div>
+      <div class="agent-card">
+        <h2>⚡ semantic-parallel-data-query</h2>
+        <p>直执行 · 参数免校验 · 高性能并行取数</p>
+        <p style="font-size:0.76rem; color:#64748b; margin-top:4px;">接收结构化查询配置后直接调用语义平台，无推理与验证环节</p>
+      </div>
+      <div class="flow-arrow-h">→</div>
+      <div class="agent-badge">📊 结构化 JSON（结构化模式）/ 直接结果（简单模式）</div>
+    </div>
+  </div>
+
+  <div class="layer-arrow">
+    <div>↓ <span style="font-size:0.7rem; color:#3b82f6;">①</span></div>
+    <span class="arrow-text">上游传入查询配置：queries[]（结构化模式）或 simpleQuery + 结构化参数（简单模式）</span>
+  </div>
+
+  <!-- Layer 1: Input contract & mode dispatch -->
+  <div class="layer layer-1">
+    <div class="layer-label">LAYER 1 · 输入契约与模式分流层</div>
+
+    <div class="router-skill">
+      <div class="router-header">
+        <div class="router-icon">📥</div>
+        <div>
+          <div class="router-title">输入契约（Input Contract）</div>
+          <div class="router-subtitle">必传参数 · 查询元素结构 · 全局可选参数 · 模式判定</div>
+        </div>
+      </div>
+      <div class="router-caps">
+        <div class="router-cap">
+          <h4>🔑 必传参数</h4>
+          <p><code>consumeDatasetId</code>（数据集 ID）+ <code>queries[]</code>（查询配置数组）；简单模式则由 <code>simpleQuery</code> 触发，必传 <code>consumeDatasetId</code> + <code>metrics</code></p>
+        </div>
+        <div class="router-cap">
+          <h4>🧾 queries[] 元素字段</h4>
+          <p><code>queryId</code> / <code>queryType</code>（data｜metadata）/ <code>metrics</code>（;分隔）/ <code>timeRange</code> / <code>dimensions</code> / <code>filters</code> / <code>cycleType</code> / <code>statisticType</code> / <code>orderBy</code> / <code>limit</code> / <code>metadataTool</code> / <code>metadataQuery</code></p>
+        </div>
+        <div class="router-cap">
+          <h4>⚙️ 全局可选参数</h4>
+          <p><code>maxConcurrency</code>（默认 3，上限 5）· <code>circuitBreaker</code>（默认 3，0 禁用）· <code>mergeSameCondition</code>（默认 true）· <code>notifyOnError</code>（默认 true）· <code>dcsSign</code> · <code>traceQuery</code> · <code>skillName</code></p>
+        </div>
+        <div class="router-cap">
+          <h4>⚡ 简单模式参数</h4>
+          <p><code>simpleQuery</code>（触发条件，仅作上下文标识与 trace 描述，不参与取数）+ <code>maxMetricsPerQuery</code>（默认 5，0 禁用拆分）；queries / mergeSameCondition / traceQuery / notifyOnError 在此模式下不生效</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="path-grid">
+      <!-- Path A -->
+      <div class="path-card path-a">
+        <div class="path-card-header">
+          <div class="path-icon">⚡</div>
+          <div class="path-title">路径 A · 简单单次取数</div>
+        </div>
+        <div class="path-cond">触发：<code>simpleQuery</code> 存在 且 指标数 N ≤ <code>maxMetricsPerQuery</code>（默认 5）</div>
+        <div class="path-flow">Step S1 单次取数（可重试 1 次）→ Step S2 直接输出，随后<strong>截断</strong>（停止阅读 SKILL.md）</div>
+        <div class="path-note">不创建链路追踪，不执行合并 / 分批并行 / 熔断 / 钉钉通知；最轻量的快速路径。</div>
+        <div class="path-tags">
+          <span class="path-tag">快速路径</span>
+          <span class="path-tag">单次调用</span>
+          <span class="path-tag">直接输出</span>
+          <span class="path-tag">无 trace</span>
+        </div>
+      </div>
+      <!-- Path B -->
+      <div class="path-card path-b">
+        <div class="path-card-header">
+          <div class="path-icon">🔀</div>
+          <div class="path-title">路径 B · 简单并行模式</div>
+        </div>
+        <div class="path-cond">触发：<code>simpleQuery</code> 存在 且 N &gt; <code>maxMetricsPerQuery</code></div>
+        <div class="path-flow">SP1 指标拆分（每 5 个一组）→ SP2 <code>create-trace</code> → SP3 分批并行取数 → SP4 直接输出</div>
+        <div class="path-note">复用分批并行 / 失败重试 / 熔断机制；跳过同条件合并、结构化组装与钉钉通知；各组继承全部其他参数，仅 metrics 不同。</div>
+        <div class="path-tags">
+          <span class="path-tag">指标拆分</span>
+          <span class="path-tag">链路追踪</span>
+          <span class="path-tag">分批并行</span>
+          <span class="path-tag">直接输出</span>
+        </div>
+      </div>
+      <!-- Path C -->
+      <div class="path-card path-c">
+        <div class="path-card-header">
+          <div class="path-icon">🧩</div>
+          <div class="path-title">路径 C · 结构化模式</div>
+        </div>
+        <div class="path-cond">触发：无 <code>simpleQuery</code>，传入 <code>queries[]</code></div>
+        <div class="path-flow">Step 1 → Step 2.5 → Step 3（data）∥ Step 3M（metadata）→ Step 4 → Step 5 → Step 6</div>
+        <div class="path-note">全机制完整链路，支持 data + metadata 两类查询；输出结构化 JSON 契约，与上游 skill 无缝对接；失败时可选钉钉告警。</div>
+        <div class="path-tags">
+          <span class="path-tag">全链路</span>
+          <span class="path-tag">JSON 契约</span>
+          <span class="path-tag">同条件合并</span>
+          <span class="path-tag">钉钉通知</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="layer-arrow">
+    <div>↓</div>
+    <span class="arrow-text">各路径按需驱动下方核心执行机制</span>
+  </div>
+
+  <!-- Layer 2: Core mechanisms -->
+  <div class="layer layer-2">
+    <div class="layer-label">LAYER 2 · 核心执行机制层（6 大能力）</div>
+
+    <div class="biz-grid">
+      <!-- 1 -->
+      <div class="biz-card">
+        <div class="biz-card-header">
+          <div class="biz-icon">🔀</div>
+          <div>
+            <div class="biz-title">同条件查询合并</div>
+            <span class="biz-step">Step 2.5 · 仅结构化模式</span>
+          </div>
+        </div>
+        <div class="biz-desc">纯内存预处理：<code>consumeDatasetId</code> / <code>timeRange</code> / <code>dimensions</code> / <code>filters</code> / <code>cycleType</code> / <code>statisticType</code> / <code>orderBy</code> / <code>limit</code> 八字段完全相同的 data 查询合并为一次调用，metrics 用 <code>;</code> 拼接去重，记录 <code>mergedFrom</code>；metadata 查询不参与。</div>
+        <div class="biz-tags">
+          <span class="biz-tag">默认开启</span>
+          <span class="biz-tag">减少请求数</span>
+          <span class="biz-tag">可关闭</span>
+        </div>
+      </div>
+      <!-- 2 -->
+      <div class="biz-card">
+        <div class="biz-card-header">
+          <div class="biz-icon">⚙️</div>
+          <div>
+            <div class="biz-title">分批并行执行</div>
+            <span class="biz-step">Step 3b · 结构化 + 简单并行</span>
+          </div>
+        </div>
+        <div class="biz-desc">batch 大小 = <code>min(maxConcurrency, 5)</code>，默认 3；同 batch 内多个 <code>aone-kit</code> Bash 调用在同一个 assistant message 中并行发起，batch 之间串行等待，兼顾吞吐与平台压力。</div>
+        <div class="biz-tags">
+          <span class="biz-tag">batch=3 默认</span>
+          <span class="biz-tag">批内并行</span>
+          <span class="biz-tag">批间串行</span>
+        </div>
+      </div>
+      <!-- 3 -->
+      <div class="biz-card">
+        <div class="biz-card-header">
+          <div class="biz-icon">🔁</div>
+          <div>
+            <div class="biz-title">失败重试</div>
+            <span class="biz-step">Step 3c · error-taxonomy 判定</span>
+          </div>
+        </div>
+        <div class="biz-desc">仅可重试错误（TIMEOUT / NETWORK_ERROR / PLATFORM_INTERNAL_ERROR）以<strong>完全相同参数</strong>重试 1 次，输出标记 <code>retried: true</code>；重试占用当前 batch 的并行槽位；不可重试错误直接返回结构化错误。</div>
+        <div class="biz-tags">
+          <span class="biz-tag">最多 1 次</span>
+          <span class="biz-tag">同参数</span>
+          <span class="biz-tag">retried 标记</span>
+        </div>
+      </div>
+      <!-- 4 -->
+      <div class="biz-card">
+        <div class="biz-card-header">
+          <div class="biz-icon">🛑</div>
+          <div>
+            <div class="biz-title">熔断机制</div>
+            <span class="biz-step">Step 3d · 本 skill 特色能力</span>
+          </div>
+        </div>
+        <div class="biz-desc">维护连续失败计数器：成功即清零，失败累加；连续失败达到 <code>circuitBreaker</code>（默认 3，传 0 禁用）时中止剩余 data 查询，标记 <code>CIRCUIT_BREAKER_TRIGGERED</code> / <code>skipped: true</code>，已完成查询不受影响；仅作用于 data 查询。</div>
+        <div class="biz-tags">
+          <span class="biz-tag">连续 3 次</span>
+          <span class="biz-tag">防无效堆积</span>
+          <span class="biz-tag">可禁用</span>
+        </div>
+      </div>
+      <!-- 5 -->
+      <div class="biz-card">
+        <div class="biz-card-header">
+          <div class="biz-icon">🔗</div>
+          <div>
+            <div class="biz-title">链路追踪</div>
+            <span class="biz-step">Step 1 / SP2</span>
+          </div>
+        </div>
+        <div class="biz-desc"><code>create-trace</code> 生成全局 <code>traceId</code>，同一轮所有查询共用；每次取数通过 <code>--header 'EagleEye-TraceId:&lt;traceId&gt;'</code> 透传，产出置信度报表链接 <code>traceReportUrl</code>，便于多批次问题排查。</div>
+        <div class="biz-tags">
+          <span class="biz-tag">traceId 共用</span>
+          <span class="biz-tag">EagleEye 透传</span>
+          <span class="biz-tag">置信度报告</span>
+        </div>
+      </div>
+      <!-- 6 -->
+      <div class="biz-card">
+        <div class="biz-card-header">
+          <div class="biz-icon">🏷️</div>
+          <div>
+            <div class="biz-title">错误分类与提取</div>
+            <span class="biz-step">references/error-taxonomy.md</span>
+          </div>
+        </div>
+        <div class="biz-desc">11 种错误代码枚举，统一输出 <code>code</code> / <code>rawMessage</code> / <code>extracted</code> / <code>suggestion</code> / <code>retryable</code>；结构化提取未绑定字段（unboundMetrics）、权限信息（sceneName / applyUrl）、非法字段（invalidFields）等。</div>
+        <div class="biz-tags">
+          <span class="biz-tag">11 类错误</span>
+          <span class="biz-tag">结构化提取</span>
+          <span class="biz-tag">重试判定</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Key conventions -->
+    <div class="shared-role-annotation">
+      <div class="role-pill">
+        <h5>🧬 queryMode 固定</h5>
+        <p>请求固定 <code>queryMode: "semantic"</code>，指标 / 维度支持中文语义名与英文 code 直传</p>
+      </div>
+      <div class="role-pill">
+        <h5>🔢 limit 必填约定</h5>
+        <p>上游未传 <code>limit</code> 时必须显式填充 9999，不可省略、不可传 null</p>
+      </div>
+      <div class="role-pill warn">
+        <h5>⚠️ orderBy × limit 交互风险</h5>
+        <p>带维度展开且无 orderBy 时，limit 截断的是平台内部顺序，并非 TOP N；排名类需求必须显式传 orderBy</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="layer-arrow">
+    <div>↓</div>
+    <span class="arrow-text">所有机制通过 Bash + aone-kit CLI 驱动平台调用（不走 MCP 协议）</span>
+  </div>
+
+  <!-- Layer 3: Tool invocation -->
+  <div class="layer layer-3">
+    <div class="layer-label">LAYER 3 · 工具调用层（aone-kit CLI · semantics-public）</div>
+
+    <div class="cli-card">
+      <div class="cli-card-header">
+        <div class="cli-icon">🖥️</div>
+        <div>
+          <div class="cli-title">统一调用格式</div>
+          <div class="cli-subtitle">Bash 工具执行 · 每查询一个独立 Bash 调用 · 框架自动并行</div>
+        </div>
+      </div>
+      <code class="cli-code">export A1_NO_TELEMETRY=1 &amp;&amp; aone-kit call-tool semantics-public::&lt;工具名&gt; '&lt;JSON参数&gt;' --header 'EagleEye-TraceId:&lt;traceId&gt;'</code>
+      <div class="cli-notes">
+        <span class="cli-note">create-trace 无需 header，其余调用均透传 traceId</span>
+        <span class="cli-note">metadata 工具鉴权走 X-Dcs-Sign header（有 dcsSign 时）</span>
+        <span class="cli-note">禁止通过 MCP 协议发现或调用这些工具</span>
+        <span class="cli-note">简单单次取数（路径 A）不带 trace header</span>
+      </div>
+    </div>
+
+    <div class="tool-grid">
+      <!-- tool 1 -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-icon">📊</div>
+          <div class="tool-name mono">universal-data-query-and-analyse</div>
+        </div>
+        <div class="tool-role">语义取数核心，三条路径的实际取数入口</div>
+        <div class="tool-params">请求体 <code>request</code>：consumeDatasetId / queryMode=semantic / metrics / timeRange / dimensions / filters / cycleType / statisticType / orderBy / limit / dcsSign</div>
+        <span class="tool-badge">data 查询</span>
+      </div>
+      <!-- tool 2 -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-icon">🔗</div>
+          <div class="tool-name mono">create-trace</div>
+        </div>
+        <div class="tool-role">创建链路追踪，获取 traceId</div>
+        <div class="tool-params">参数：<code>query</code>（traceQuery 或 simpleQuery 原文）/ <code>version</code> / <code>skillName</code>；每次执行仅调用一次</div>
+        <span class="tool-badge">链路追踪</span>
+      </div>
+      <!-- tool 3 -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-icon">🎯</div>
+          <div class="tool-name mono">select-relevant-metadata</div>
+        </div>
+        <div class="tool-role">元数据圈选（metadataTool = select，默认）</div>
+        <div class="tool-params">参数：<code>request.consumeDatasetId</code> + <code>request.query</code>（metadataQuery）</div>
+        <span class="tool-badge">metadata 查询</span>
+      </div>
+      <!-- tool 4 -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-icon">📚</div>
+          <div class="tool-name mono">query-semantic-metadata</div>
+        </div>
+        <div class="tool-role">元数据全量查询（metadataTool = query）</div>
+        <div class="tool-params">参数：<code>consumeDatasetId</code> + 可选 <code>needMetricDrillGroups</code>（返回指标可下钻维度分组）</div>
+        <span class="tool-badge">metadata 查询</span>
+      </div>
+      <!-- tool 5 -->
+      <div class="tool-card">
+        <div class="tool-card-header">
+          <div class="tool-icon">🧭</div>
+          <div class="tool-name mono">explore-dataset-metadata</div>
+        </div>
+        <div class="tool-role">数据集探索（metadataTool = explore）</div>
+        <div class="tool-params">参数：<code>consumeDatasetId</code> + <code>query</code>（metadataQuery）</div>
+        <span class="tool-badge">metadata 查询</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="layer-arrow">
+    <div>↓</div>
+    <span class="arrow-text">HTTP 请求至 DIC 语义平台（EagleEye-TraceId / X-Dcs-Sign header 透传）</span>
+  </div>
+
+  <!-- Layer 4: Platform -->
+  <div class="layer layer-4">
+    <div class="layer-label">LAYER 4 · 语义平台层</div>
+    <div class="shared-grid">
+      <div class="shared-card">
+        <div class="shared-card-header">
+          <div class="shared-icon">🏛️</div>
+          <div>
+            <div class="shared-title">DIC 语义平台（Semantic Platform）</div>
+            <div class="shared-subtitle">实际执行语义查询的后端服务</div>
+          </div>
+        </div>
+        <div class="shared-desc">
+          按 consumeDatasetId 定位消费数据集，在语义层解析指标 / 维度并执行计算。返回 <code>result</code> 数据数组、<code>assistantMessage</code> 附加说明与 <code>queryResultId</code> 结果存储 ID；链路追踪信息汇入置信度报表（traceReportUrl）。查询成功但结果为空时返回 <code>success: true, isEmpty: true</code>（EMPTY_RESULT，非真正错误）。
+        </div>
+        <div class="shared-features">
+          <span class="shared-feature">queryMode=semantic</span>
+          <span class="shared-feature">中文语义名 / 英文 code 双支持</span>
+          <span class="shared-feature">queryResultId 结果存储</span>
+          <span class="shared-feature">置信度报表</span>
+          <span class="shared-feature">dcsSign 数据集鉴权</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output contracts -->
+  <div class="section-title">输出契约与错误通知</div>
+  <div class="contract-grid">
+    <div class="contract-card contract-json">
+      <h3>🧩 结构化模式输出（JSON）</h3>
+      <div class="contract-sub">路径 C 专用 · 与上游 skill 程序化对接</div>
+      <ul>
+        <li>顶层：<code>traceId</code> / <code>traceReportUrl</code> / <code>totalQueries</code> / <code>successCount</code> / <code>failureCount</code> / <code>circuitBreakerTriggered</code> / <code>notificationSent</code></li>
+        <li><code>results[]</code>：<code>queryId</code> / <code>dsl</code>（完整请求参数）/ <code>success</code> / <code>result</code> 数据数组 / <code>totalCount</code> / <code>queryResultId</code> / <code>assistantMessage</code> / <code>retried</code> / <code>mergedFrom</code> / <code>skipped</code></li>
+        <li>失败项含结构化 <code>error</code>：code / rawMessage / extracted / suggestion / retryable</li>
+        <li>空结果：<code>success: true</code> + <code>isEmpty: true</code></li>
+      </ul>
+    </div>
+    <div class="contract-card contract-simple">
+      <h3>⚡ 简单模式输出（直接呈现）</h3>
+      <div class="contract-sub">路径 A / B 共用 · 无结构化 JSON 外壳</div>
+      <ul>
+        <li>成功：提取 <code>result</code> 数据，结合 <code>assistantMessage</code>，用自然语言或表格直观呈现</li>
+        <li>多行数据以表格呈现；简单并行模式各组数据按维度合并为一张表</li>
+        <li>部分失败：成功组正常呈现，失败组说明失败指标与原因（含重试 / 熔断状态）</li>
+        <li>不输出 traceId / queryResultId / mode / success 等元信息字段</li>
+        <li>不执行钉钉错误通知（Step 6）</li>
+      </ul>
+    </div>
+    <div class="contract-card contract-notify">
+      <h3>🔔 Step 6 · 钉钉错误通知</h3>
+      <div class="contract-sub">仅结构化模式 · notifyOnError 默认 true 且存在失败时</div>
+      <ul>
+        <li>配置：<code>references/dingtalk-config.json</code> 的 webhookUrl + signSecret（HMAC-SHA256 签名）</li>
+        <li>识别查询人：qoderwork profile 邮箱前缀，失败显示"未知用户"</li>
+        <li>Markdown 告警：成功/失败计数 + 每个失败查询的指标、维度、错误码、错误信息（截取 200 字符）、建议</li>
+        <li>附 Trace 置信度报表链接；通知失败不影响主流程（<code>notificationSent: false</code>）</li>
+        <li>配置未设置时跳过（<code>notificationSkipped: "config_not_set"</code>）</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Error taxonomy table -->
+  <div class="section-title">错误分类速查（references/error-taxonomy.md）</div>
+  <div class="err-panel">
+    <table class="err-table">
+      <thead>
+        <tr>
+          <th style="width:24%;">错误代码</th>
+          <th style="width:12%;">可重试</th>
+          <th>触发条件与说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>TIMEOUT</code></td><td><span class="retry-yes">是</span></td><td>查询超时；建议缩小时间范围或减少维度</td></tr>
+        <tr><td><code>NETWORK_ERROR</code></td><td><span class="retry-yes">是</span></td><td>Bash aone-kit 调用网络故障（ECONNREFUSED / ETIMEDOUT / fetch failed）</td></tr>
+        <tr><td><code>PLATFORM_INTERNAL_ERROR</code></td><td><span class="retry-yes">是</span></td><td><code>success: false</code> 且非特定错误，平台内部异常，重试可能恢复</td></tr>
+        <tr><td><code>NOT_BOUND_TO_PHYSICAL_TABLE</code></td><td><span class="retry-no">否</span></td><td>指标/维度未绑定物理表；提取 unboundMetrics / unboundDimensions</td></tr>
+        <tr><td><code>PERMISSION_DENIED</code></td><td><span class="retry-no">否</span></td><td>鉴权失败 / 无场景访问权限；提取 sceneName / sceneAdmin / applyUrl</td></tr>
+        <tr><td><code>INVALID_METRIC_OR_DIMENSION</code></td><td><span class="retry-no">否</span></td><td>字段名不匹配（未找到 / 不存在 / 无法识别）；提取 invalidFields</td></tr>
+        <tr><td><code>INVALID_PARAM</code></td><td><span class="retry-no">否</span></td><td>参数值不合法（如 cycleType 值错误）</td></tr>
+        <tr><td><code>DATASET_NOT_FOUND</code></td><td><span class="retry-no">否</span></td><td>数据集 ID 不存在，检查 consumeDatasetId</td></tr>
+        <tr><td><code>EMPTY_RESULT</code></td><td><span class="retry-no">否</span></td><td>成功但结果为空（<code>success: true, isEmpty: true</code>），非真正错误</td></tr>
+        <tr><td><code>CIRCUIT_BREAKER_TRIGGERED</code></td><td><span class="retry-no">否</span></td><td>熔断跳过（本 skill 新增），<code>skipped: true</code>，建议检查语义平台状态</td></tr>
+        <tr><td><code>UNKNOWN</code></td><td><span class="retry-no">否</span></td><td>无法归类，查看 rawMessage 判断</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <span class="legend-title">图例：</span>
+    <div class="legend-item">
+      <div class="legend-dot l0"></div>
+      <span>Layer 0 — 上游调用方</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot l1"></div>
+      <span>Layer 1 — 输入契约 & 模式分流</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot l2"></div>
+      <span>Layer 2 — 核心执行机制</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot l3"></div>
+      <span>Layer 3 — aone-kit 工具调用</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot l4"></div>
+      <span>Layer 4 — DIC 语义平台</span>
+    </div>
+    <div class="legend-item">
+      <span style="font-size:0.72rem; color:#f59e0b;">①②③④⑤⑥⑦⑧</span>
+      <span>调用步骤编号</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
